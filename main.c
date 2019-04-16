@@ -11,12 +11,10 @@
 #define POS4 BIT7
 char direction = 0; // sets spin direction of motor
 volatile long int ADC_x, ADC_y, ADC_z;
-volatile float accel_x, accel_y, accel_z;
 
-void CCW_motion(){
+void CCW_motion(float angle){
     static int i = 0;
-//    P1OUT &= ~BIT6;
-//    P2OUT &= ~(BIT5 | BIT4 | BIT3);
+    int steps =
     P2OUT &= ~(BIT0 | BIT3 | BIT6 | BIT7);
 
     if(i == 1){
@@ -166,19 +164,29 @@ void main(void) {
 //    UART_setup();                       // Setup UART for RS-232
     _EINT();
     float deltaAngle = 0;
+    float accel_x, accel_y, accel_z;
+    float setPoint = 0;
 
     while (1){
         ADC12CTL0 |= ADC12SC;               // Start conversions
         __bis_SR_register(LPM0_bits + GIE); // Enter LPM0
 
+        accel_x = ((ADC_x*3.3/4095-1.65)/0.3);
+        accel_y = ((ADC_y*3.3/4095-1.65)/0.3);
+        accel_z = ((ADC_z*3.3/4095-1.65)/0.3);
 
+        angle = (atan2f(accel_z,accel_y)*180/M_PI) + 180; // process variable PV(t)
+
+        deltaAngle = setPoint - angle; // manipulated variable MV(t)
         //PID control loop
         while(deltaAngle){
             if(deltaAngle > 0){
-                // move motor clockwise
+                // move motor clockwise?
+
+                rotate_by_angle(deltaAngle)
             }
             else{
-                // move motor counterclockwise
+                // move motor counterclockwise?
             }
         }
     }
