@@ -1,3 +1,4 @@
+
 /*
  * TODO:
  *  - combine CCW_motion and CW_motion into one function with a direction argument that is a 1 or 0.
@@ -16,7 +17,7 @@ void CCW_motion(){
     static int i = 0;
 //    P1OUT &= ~BIT6;
 //    P2OUT &= ~(BIT5 | BIT4 | BIT3);
-    P2OUT &= ~(BIT0 | BIT3 | BIT6 | POS4);
+    P2OUT &= ~(BIT0 | BIT3 | BIT6 | BIT7);
 
     if(i == 1){
         P2OUT ^= BIT0;
@@ -28,18 +29,18 @@ void CCW_motion(){
         P2OUT ^= BIT6;
     }
     else{
-        P2OUT ^= POS4;
+        P2OUT ^= BIT7;
         i = 0;
     }
     i++;
 }
 
-void CW_motion(int steps){
+void CW_motion(){
     int i = 3;
-    while(steps){
+//    while(steps){
     //    P1OUT &= ~BIT6;
     //    P2OUT &= ~(BIT5 | BIT4 | BIT3);
-        P2OUT &= ~(BIT0 | BIT3 | BIT6 | POS4);
+        P2OUT &= ~(BIT0 | BIT3 | BIT6 | BIT7);
         if(i == 1){
             P2OUT ^= BIT0;
         }
@@ -50,11 +51,11 @@ void CW_motion(int steps){
             P2OUT ^= BIT6;
         }
         else{
-            P2OUT ^= POS4;
+            P2OUT ^= BIT7;
             i = 4;
         }
         i--;
-    }
+//    }
 }
 void TimerA_setup(void) {
     TACCR0 = 200;                      // 6552 / 32768 Hz = 0.2s
@@ -164,10 +165,12 @@ void main(void) {
     P2OUT &= ~(BIT0 | BIT3 | BIT6 | BIT7);
 //    UART_setup();                       // Setup UART for RS-232
     _EINT();
+    float deltaAngle = 0;
 
     while (1){
         ADC12CTL0 |= ADC12SC;               // Start conversions
         __bis_SR_register(LPM0_bits + GIE); // Enter LPM0
+
 
         //PID control loop
         while(deltaAngle){
