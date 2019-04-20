@@ -1,4 +1,3 @@
-
 /*
  * TODO:
  *  - combine CCW_motion and CW_motion into one function with a direction argument that is a 1 or 0.
@@ -12,64 +11,10 @@
 char direction = 0; // sets spin direction of motor
 volatile long int ADC_x, ADC_y, ADC_z;
 
-void CCW_motion(float angle){
-    static int i = 0;
-    int steps =
-    P2OUT &= ~(BIT0 | BIT3 | BIT6 | BIT7);
-
-    if(i == 1){
-        P2OUT ^= BIT0;
-    }
-    else if(i == 2){
-        P2OUT ^= BIT3;
-    }
-    else if(i == 3){
-        P2OUT ^= BIT6;
-    }
-    else{
-        P2OUT ^= BIT7;
-        i = 0;
-    }
-    i++;
-}
-
-void CW_motion(){
-    int i = 3;
-//    while(steps){
-    //    P1OUT &= ~BIT6;
-    //    P2OUT &= ~(BIT5 | BIT4 | BIT3);
-        P2OUT &= ~(BIT0 | BIT3 | BIT6 | BIT7);
-        if(i == 1){
-            P2OUT ^= BIT0;
-        }
-        else if(i == 2){
-            P2OUT ^= BIT3;
-        }
-        else if(i == 3){
-            P2OUT ^= BIT6;
-        }
-        else{
-            P2OUT ^= BIT7;
-            i = 4;
-        }
-        i--;
-//    }
-}
 void TimerA_setup(void) {
-    TACCR0 = 200;                      // 6552 / 32768 Hz = 0.2s
+    TACCR0 = 200;                      // 200 / 32768 Hz = 6.1 ms
     TACTL = TASSEL_1 + MC_1;            // ACLK, up mode
-    TACCTL0 = CCIE;                     // Enabled interrupt
-}
-
-void TimerB_setup(void) {
-    // setup buzzer on Port 3.5
-    P3DIR |= BIT5;  // P3.5 set up as output
-    P3SEL |= BIT5;
-
-    TB0CCTL4 = OUTMOD_7;          // PWM reset/set mode
-    TB0CTL = TBSSEL_1 | MC_1;     // ACLK is clock source, UP mode
-    TB0CCR0 = 31;                // Set TB0 (and maximum) count value
-    TB0CCR4 = 0;                // Set TB4 count value
+//    TACCTL0 = CCIE;                     // Enabled interrupt
 }
 
 void ADC_setup(void) {
@@ -88,21 +33,6 @@ void ADC_setup(void) {
     ADC12CTL0 |= ENC;                   // Enable conversions
 }
 
-void UART_putCharacter(char c) {
-    while(!(IFG2 & UCA0TXIFG));         // Wait for previous character to be sent
-    UCA0TXBUF = c;                      // Send byte to the buffer for transmitting
-}
-
-void UART_setup(void) {
-    P2SEL |= BIT4 + BIT5;               // Set up Rx and Tx bits
-    UCA0CTL0 = 0;                       // Set up default RS-232 protocol
-    UCA0CTL1 |= BIT0 + UCSSEL_2;        // Disable device, set clock
-    UCA0BR0 = 27;                       // 1048576 Hz / 38400
-    UCA0BR1 = 0;
-    UCA0MCTL = 0x94;
-    UCA0CTL1 &= ~BIT0;                  // Start UART device
-}
-
 float alpha_beta_mag(float alpha, float beta, float inphase, float quadrature){
     /* magnitude ~= alpha * max(|I|, |Q|) + beta * min(|I|, |Q|) */
     float abs_inphase = fabsf(inphase);
@@ -115,80 +45,140 @@ float alpha_beta_mag(float alpha, float beta, float inphase, float quadrature){
        }
 }
 
-float sendData(void) {
-    // Sends accel data through UART and returns the magnitude of the acceleration
-    int i;
-    float magnitude,angle,pitch;
-    magnitude = 0;
 
-    accel_x = ((ADC_x*3.3/4095-1.65)/0.3);
-    accel_y = ((ADC_y*3.3/4095-1.65)/0.3);
-    accel_z = ((ADC_z*3.3/4095-1.65)/0.3);
-//    __no_operation();
-//    __no_operation();
-//    __no_operation();
-//    pitch = atan2f((-accel_y),sqrt(accel_z*accel_z+accel_x*accel_x))*180/M_PI;
-    angle = (atan2f(accel_z,accel_y)*180/M_PI) + 180;
-//    magnitude = powf(accel_x*accel_x + accel_y*accel_y +accel_z*accel_z, 0.5);
-//    magnitude = alpha_beta_mag(0.960434,0.397825,accel_x,accel_y);
-//    magnitude = alpha_beta_mag(0.960434,0.397825,magnitude,accel_z);
-
-    // Use character pointers to send one byte at a time
-    char *xpointer=(char *)&accel_x;
-    char *ypointer=(char *)&accel_y;
-    char *zpointer=(char *)&accel_z;
-
-    UART_putCharacter(0x55);            // Send header
-    for(i = 0; i < 4; i++) {            // Send x percentage - one byte at a time
-        UART_putCharacter(xpointer[i]);
+void step_motor2(char direction){
+    int i = 0;
+    P2OUT &= ~(BIT0 | BIT3 | BIT6 | BIT7);
+    if(direction){
+        for(i = 0; i < 5; i++){
+            if(i == 1){
+                P2OUT ^= BIT0;
+            }
+            else if(i == 2){
+                P2OUT ^= BIT3;
+            }
+            else if(i == 3){
+                P2OUT ^= BIT6;
+            }
+            else{
+                P2OUT ^= BIT7;
+                i = 0;
+            }
+        }
     }
-    for(i = 0; i < 4; i++) {            // Send y percentage - one byte at a time
-        UART_putCharacter(ypointer[i]);
+    else{
+        for(i = 0; i < 5; i++){
+            if(i == 1){
+                P2OUT ^= BIT0;
+            }
+            else if(i == 2){
+                P2OUT ^= BIT3;
+            }
+            else if(i == 3){
+                P2OUT ^= BIT6;
+            }
+            else{
+                P2OUT ^= BIT7;
+                i = 0;
+            }
+        }
     }
-    for(i = 0; i < 4; i++) {            // Send y percentage - one byte at a time
-        UART_putCharacter(zpointer[i]);
-    }
-
-    return magnitude;
 }
+void step_motor_cw(){
+    static int i = 0;
+    P2OUT &= ~(BIT0 | BIT3 | BIT6 | BIT7);
 
+    if(i == 1){
+        P2OUT ^= BIT0;
+    }
+    else if(i == 2){
+        P2OUT ^= BIT3;
+    }
+    else if(i == 3){
+        P2OUT ^= BIT6;
+    }
+    else{
+        P2OUT ^= BIT7;
+        i = 0;
+    }
+    i++;
+}
+void step_motor_ccw(){
+    static int i = 4;
+    P2OUT &= ~(BIT0 | BIT3 | BIT6 | BIT7);
 
+    if(i == 1){
+        P2OUT ^= BIT0;
+    }
+    else if(i == 2){
+        P2OUT ^= BIT3;
+    }
+    else if(i == 3){
+        P2OUT ^= BIT6;
+    }
+    else{
+        P2OUT ^= BIT7;
+        i = 4;
+    }
+    i--;
+}
 void main(void) {
     WDTCTL = WDT_ADLY_16; // 1 second interval
-    IE1 |= WDTIE;                             // Enable WDT interrupt
-    TimerA_setup();                     // Setup timer to send ADC data
-    TimerB_setup();
+//    IE1 |= WDTIE;                             // Enable WDT interrupt
+    TimerA_setup();
+//    TimerB_setup();
     ADC_setup();                        // Setup ADC
     P2DIR |= BIT0 | BIT3 | BIT6 | BIT7;
     P2OUT &= ~(BIT0 | BIT3 | BIT6 | BIT7);
 //    UART_setup();                       // Setup UART for RS-232
-    _EINT();
     float deltaAngle = 0;
-    float accel_x, accel_y, accel_z;
+    float accel_y, accel_z,angle;
     float setPoint = 0;
+    int steps;
+    _EINT();
+
 
     while (1){
         ADC12CTL0 |= ADC12SC;               // Start conversions
-        __bis_SR_register(LPM0_bits + GIE); // Enter LPM0
+        __bis_SR_register(LPM0_bits); // Enter LPM0
 
-        accel_x = ((ADC_x*3.3/4095-1.65)/0.3);
+//        accel_x = ((ADC_x*3.3/4095-1.65)/0.3);
         accel_y = ((ADC_y*3.3/4095-1.65)/0.3);
         accel_z = ((ADC_z*3.3/4095-1.65)/0.3);
 
         angle = (atan2f(accel_z,accel_y)*180/M_PI) + 180; // process variable PV(t)
 
         deltaAngle = setPoint - angle; // manipulated variable MV(t)
-        //PID control loop
-        while(deltaAngle){
-            if(deltaAngle > 0){
-                // move motor clockwise?
 
-                rotate_by_angle(deltaAngle)
+        // 1 full rotation is 2048 "steps". One step is 4 pulses to the motor. function uses "full step" mode
+        // steps is calculated using angle. 2048 steps = 360 degrees.
+        // for 1 degree resolution. we step 2048/360 = 5.689 ~= 5
+        steps = 2048/360*deltaAngle;
+//        steps = 2048;
+        TACCTL0 = CCIE;     // Enable timer A interrupt for PWM
+        TACCR0 = 200;
+        IE1 |= WDTIE;
+        //PID control loop
+        while(steps){
+            if(steps < 0){
+                // move motor clockwise?
+                step_motor_cw();
+//                rotate_by_angle(deltaAngle);
+                steps++;
             }
             else{
+                step_motor_ccw();
+                steps--;
                 // move motor counterclockwise?
             }
+            __bis_SR_register(LPM0_bits);
+
+//            __bis_SR_register(LPM0_bits + GIE); // Enter LPM0
         }
+        //disable timer A interrupt until next PID loop
+        TACCTL0 &= ~CCIE;
+//        __no_operation();
+//        __no_operation();
     }
 }
 
@@ -204,35 +194,12 @@ __interrupt void ADC12ISR(void) {
 
 #pragma vector = TIMERA0_VECTOR
 __interrupt void timerA_isr() {
-    static int i = 0;
-
-    if(i == 2048){
-        if(direction == 1){
-            direction = 0;
-
-        }
-        else{
-            direction = 1;
-        }
-        TACCR0 = 200;
-        IE1 |= WDTIE;
-        i = 0;
-    }
-    else{
-        i++;
-    }
-
-    if(direction == 1){
-            CW_motion();
-        }
-        else{
-            CCW_motion();
-        }
-        LPM0_EXIT;
+    LPM0_EXIT;
 }
 
 #pragma vector = WDT_VECTOR
 __interrupt void watchdog_timer(void) {
+    // accelerates motor over time to avoid stalling
     static int i = 0;
 
     if(i == 15){
@@ -245,3 +212,4 @@ __interrupt void watchdog_timer(void) {
     }
 
 }
+
