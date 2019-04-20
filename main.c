@@ -45,45 +45,6 @@ float alpha_beta_mag(float alpha, float beta, float inphase, float quadrature){
        }
 }
 
-
-void step_motor2(char direction){
-    int i = 0;
-    P2OUT &= ~(BIT0 | BIT3 | BIT6 | BIT7);
-    if(direction){
-        for(i = 0; i < 5; i++){
-            if(i == 1){
-                P2OUT ^= BIT0;
-            }
-            else if(i == 2){
-                P2OUT ^= BIT3;
-            }
-            else if(i == 3){
-                P2OUT ^= BIT6;
-            }
-            else{
-                P2OUT ^= BIT7;
-                i = 0;
-            }
-        }
-    }
-    else{
-        for(i = 0; i < 5; i++){
-            if(i == 1){
-                P2OUT ^= BIT0;
-            }
-            else if(i == 2){
-                P2OUT ^= BIT3;
-            }
-            else if(i == 3){
-                P2OUT ^= BIT6;
-            }
-            else{
-                P2OUT ^= BIT7;
-                i = 0;
-            }
-        }
-    }
-}
 void step_motor_cw(){
     static int i = 0;
     P2OUT &= ~(BIT0 | BIT3 | BIT6 | BIT7);
@@ -122,6 +83,14 @@ void step_motor_ccw(){
     }
     i--;
 }
+
+float round_one_decimal(float var)
+{
+    // returns float rounded to 1 decimal place
+    float value = (int)(var * 10 + .5);
+    return (float)value / 10;
+}
+
 void main(void) {
     WDTCTL = WDT_ADLY_16; // 1 second interval
 //    IE1 |= WDTIE;                             // Enable WDT interrupt
@@ -133,7 +102,8 @@ void main(void) {
 //    UART_setup();                       // Setup UART for RS-232
     float deltaAngle = 0;
     float accel_y, accel_z,angle;
-    float setPoint = 0;
+    float setPoint = 270;
+    float p_gain = 2.0;
     int steps;
     _EINT();
 
@@ -143,12 +113,16 @@ void main(void) {
         __bis_SR_register(LPM0_bits); // Enter LPM0
 
 //        accel_x = ((ADC_x*3.3/4095-1.65)/0.3);
-        accel_y = ((ADC_y*3.3/4095-1.65)/0.3);
-        accel_z = ((ADC_z*3.3/4095-1.65)/0.3);
+        accel_y = round_one_decimal(((ADC_y*3.3/4095-1.65)/0.3));
+        accel_z = round_one_decimal(((ADC_z*3.3/4095-1.65)/0.3));
 
         angle = (atan2f(accel_z,accel_y)*180/M_PI) + 180; // process variable PV(t)
 
-        deltaAngle = setPoint - angle; // manipulated variable MV(t)
+        //debug if statement to set break point for larger than unexpected angles
+        if(angle > 400){
+            __no_operation();
+        }
+        deltaAngle = p_gain*(setPoint - angle); // manipulated variable MV(t)
 
         // 1 full rotation is 2048 "steps". One step is 4 pulses to the motor. function uses "full step" mode
         // steps is calculated using angle. 2048 steps = 360 degrees.
@@ -175,6 +149,7 @@ void main(void) {
 
 //            __bis_SR_register(LPM0_bits + GIE); // Enter LPM0
         }
+
         //disable timer A interrupt until next PID loop
         TACCTL0 &= ~CCIE;
 //        __no_operation();
@@ -212,4 +187,3 @@ __interrupt void watchdog_timer(void) {
     }
 
 }
-
