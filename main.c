@@ -1,6 +1,6 @@
 /*
  * TODO:
- *  - remove or re-implement acceleration ramp up using WDT_interrupt
+ *
  */
 
 #include  <msp430xG46x.h>
@@ -196,18 +196,4 @@ __interrupt void timerA_isr() {
     }
 }
 
-#pragma vector = WDT_VECTOR
-__interrupt void watchdog_timer(void) {
-    // accelerates motor over time to avoid stalling
-    static int i = 0;
 
-    if(i == 15){
-        i = 0;
-        IE1 &= ~WDTIE;
-    }
-    else{
-        TACCR0 -= 9;
-        i++;
-    }
-
-}
