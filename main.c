@@ -1,22 +1,37 @@
 /*
  * TODO:
- *  - combine CCW_motion and CW_motion into one function with a direction argument that is a 1 or 0.
- *      example prototype: void motor_motion(int steps, char direction);
+ *  - remove or re-implement acceleration ramp up using WDT_interrupt
  */
 
 #include  <msp430xG46x.h>
 #include <math.h>
+#include <stdlib.h>
 //#include  <stdio.h>
 #define POS4 BIT7
 char direction = 0; // sets spin direction of motor
 volatile long int ADC_x, ADC_y, ADC_z;
 
+float deltaAngle = 0;
+float MV;
+float accel_y, accel_z,angle;
+float setPoint = 90;
+float p_gain = 10;
+int steps;
+int motor_speed=0;
+int min_period = 100;
+int max_period = 1000;
+
 void TimerA_setup(void) {
-    TACCR0 = 200;                      // 200 / 32768 Hz = 6.1 ms
+    TACCR0 = min_period;                      // 200 / 32768 Hz = 6.1 ms
     TACTL = TASSEL_1 + MC_1;            // ACLK, up mode
 //    TACCTL0 = CCIE;                     // Enabled interrupt
 }
+void TimerB_setup(void) {
 
+    TB0CCR0 = 3276;                // Set TB0 (and maximum) count value
+    TB0CTL = TBSSEL_1 | MC_1;     // ACLK is clock source, UP mode
+
+}
 void ADC_setup(void) {
     int i =0;
 
@@ -95,65 +110,60 @@ void main(void) {
     WDTCTL = WDT_ADLY_16; // 1 second interval
 //    IE1 |= WDTIE;                             // Enable WDT interrupt
     TimerA_setup();
-//    TimerB_setup();
+    TimerB_setup();
     ADC_setup();                        // Setup ADC
     P2DIR |= BIT0 | BIT3 | BIT6 | BIT7;
     P2OUT &= ~(BIT0 | BIT3 | BIT6 | BIT7);
 //    UART_setup();                       // Setup UART for RS-232
-    float deltaAngle = 0;
-    float accel_y, accel_z,angle;
-    float setPoint = 270;
-    float p_gain = 2.0;
-    int steps;
-    _EINT();
+
+    TACCTL0 = CCIE;
+//    _EINT();
 
 
     while (1){
         ADC12CTL0 |= ADC12SC;               // Start conversions
-        __bis_SR_register(LPM0_bits); // Enter LPM0
+        __bis_SR_register(LPM0_bits+GIE); // Enter LPM0
 
-//        accel_x = ((ADC_x*3.3/4095-1.65)/0.3);
         accel_y = round_one_decimal(((ADC_y*3.3/4095-1.65)/0.3));
         accel_z = round_one_decimal(((ADC_z*3.3/4095-1.65)/0.3));
+//        accel_y = (((ADC_y*3.3/4095-1.65)/0.3));
+//        accel_z = (((ADC_z*3.3/4095-1.65)/0.3));
 
-        angle = (atan2f(accel_z,accel_y)*180/M_PI) + 180; // process variable PV(t)
+        angle = (atan2f(accel_z,accel_y)*180/M_PI); // process variable PV(t)
 
         //debug if statement to set break point for larger than unexpected angles
-        if(angle > 400){
-            __no_operation();
+    //    if(angle > 400){
+    //        __no_operation();
+    //    }
+        MV = p_gain*(setPoint - angle); // manipulated variable MV(t)
+        if (MV < 0){
+            direction = 0;
         }
-        deltaAngle = p_gain*(setPoint - angle); // manipulated variable MV(t)
-
+        else{
+            direction = 1;
+        }
         // 1 full rotation is 2048 "steps". One step is 4 pulses to the motor. function uses "full step" mode
         // steps is calculated using angle. 2048 steps = 360 degrees.
         // for 1 degree resolution. we step 2048/360 = 5.689 ~= 5
-        steps = 2048/360*deltaAngle;
-//        steps = 2048;
-        TACCTL0 = CCIE;     // Enable timer A interrupt for PWM
-        TACCR0 = 200;
-        IE1 |= WDTIE;
-        //PID control loop
-        while(steps){
-            if(steps < 0){
-                // move motor clockwise?
-                step_motor_cw();
-//                rotate_by_angle(deltaAngle);
-                steps++;
-            }
-            else{
-                step_motor_ccw();
-                steps--;
-                // move motor counterclockwise?
-            }
-            __bis_SR_register(LPM0_bits);
+    //        steps = 2048/360*deltaAngle;
 
-//            __bis_SR_register(LPM0_bits + GIE); // Enter LPM0
+        motor_speed = abs(min_period * 180 / MV);
+        if (motor_speed < min_period){
+            motor_speed = min_period;
+        }
+        else if (motor_speed > 30000){
+            motor_speed = 0;
+        }
+        else if (motor_speed > max_period){
+            motor_speed = max_period;
+//            __no_operation();
         }
 
-        //disable timer A interrupt until next PID loop
-        TACCTL0 &= ~CCIE;
-//        __no_operation();
-//        __no_operation();
+    //        steps = 2048;
+
+        TACCR0 = motor_speed;
+//        TB0CCTL0 &= ~CCIE;
+//        __bis_SR_register(LPM0_bits); // Enter LPM0
     }
 }
 
@@ -162,14 +172,28 @@ __interrupt void ADC12ISR(void) {
     ADC_x = ADC12MEM0;      // Move results, IFG is cleared
     ADC_y = ADC12MEM1;
     ADC_z = ADC12MEM2;
-
-    __bic_SR_register_on_exit(LPM0_bits); // Exit LPM0
+    TB0CCTL0 = CCIE;
+//    __bic_SR_register_on_exit(LPM0_bits); // Exit LPM0
 }
 
-
+#pragma vector = TIMERB0_VECTOR
+__interrupt void timerB_isr() {
+    TB0CCTL0 &= ~CCIE;
+    LPM0_EXIT;
+}
 #pragma vector = TIMERA0_VECTOR
 __interrupt void timerA_isr() {
-    LPM0_EXIT;
+    //PID control loop
+    if(MV != 0){
+        if(direction == 0){
+            // move motor clockwise?
+            step_motor_cw();
+        }
+        else{
+            // move motor counterclockwise?
+            step_motor_ccw();
+        }
+    }
 }
 
 #pragma vector = WDT_VECTOR
