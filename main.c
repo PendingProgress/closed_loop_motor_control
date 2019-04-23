@@ -15,7 +15,11 @@ float deltaAngle = 0;
 float MV;
 float accel_y, accel_z,angle;
 float setPoint = 90;
-float p_gain = 10;
+float delta_t = 0;
+float last_t = 0;
+float current_t = 0;
+float millis = 0;
+float last_millis = 0;
 int steps;
 int motor_speed=0;
 int min_period = 100;
@@ -27,9 +31,16 @@ void TimerA_setup(void) {
 //    TACCTL0 = CCIE;                     // Enabled interrupt
 }
 void TimerB_setup(void) {
-
-    TB0CCR0 = 3276;                // Set TB0 (and maximum) count value
+    TB0CCTL0 = CCIE;
+    TB0CCR0 = 32767;                // Set TB0 (and maximum) count value
     TB0CTL = TBSSEL_1 | MC_1;     // ACLK is clock source, UP mode
+
+
+//    TB0CCR1 = 32767;
+//    P3DIR &= ~BIT6;
+//    P3SEL |= BIT6;
+//    TB0CCR5 = 32767;
+    TB0CCTL5 = CM_3 | CCIS_3 | SCS | CAP | CCIE;
 
 }
 void ADC_setup(void) {
@@ -46,18 +57,6 @@ void ADC_setup(void) {
     ADC12IE |= 0x04;                    // Enable ADC12IFG.2
     for (i = 0; i < 0x3600; i++);       // Delay for reference start-up
     ADC12CTL0 |= ENC;                   // Enable conversions
-}
-
-float alpha_beta_mag(float alpha, float beta, float inphase, float quadrature){
-    /* magnitude ~= alpha * max(|I|, |Q|) + beta * min(|I|, |Q|) */
-    float abs_inphase = fabsf(inphase);
-    float abs_quadrature = fabsf(quadrature);
-    if (abs_inphase > abs_quadrature) {
-          return alpha * abs_inphase + beta * abs_quadrature;
-       }
-    else {
-          return alpha * abs_quadrature + beta * abs_inphase;
-       }
 }
 
 void step_motor_cw(){
@@ -107,23 +106,35 @@ float round_one_decimal(float var)
 }
 
 void main(void) {
-    WDTCTL = WDT_ADLY_16; // 1 second interval
-//    IE1 |= WDTIE;                             // Enable WDT interrupt
+//    WDTCTL = WDT_ADLY_16; // 1 second interval
+    WDTCTL = WDTPW + WDTHOLD;             // Stop WDT
     TimerA_setup();
     TimerB_setup();
     ADC_setup();                        // Setup ADC
     P2DIR |= BIT0 | BIT3 | BIT6 | BIT7;
     P2OUT &= ~(BIT0 | BIT3 | BIT6 | BIT7);
-//    UART_setup();                       // Setup UART for RS-232
 
     TACCTL0 = CCIE;
-//    _EINT();
+    float error = 0;
+    float integral = 0;
+    float derivative = 0;
+    float Kp = 10;
+    float Ki = 0.5;
+    float Kd = .1;
 
-
+    float previous_error = 0;
     while (1){
         ADC12CTL0 |= ADC12SC;               // Start conversions
+
         __bis_SR_register(LPM0_bits+GIE); // Enter LPM0
 
+//        __no_operation();
+
+
+        current_t = current_t + millis; // add millis to current_t
+        delta_t = current_t - last_t;
+        last_t = current_t;
+//        P3OUT ^= BIT6;
         accel_y = round_one_decimal(((ADC_y*3.3/4095-1.65)/0.3));
         accel_z = round_one_decimal(((ADC_z*3.3/4095-1.65)/0.3));
 //        accel_y = (((ADC_y*3.3/4095-1.65)/0.3));
@@ -135,23 +146,24 @@ void main(void) {
     //    if(angle > 400){
     //        __no_operation();
     //    }
-        MV = p_gain*(setPoint - angle); // manipulated variable MV(t)
+        error = setPoint - angle;
+        integral = integral + error * delta_t;
+        derivative = (error - previous_error) / delta_t;
+
+        MV = Kp * error + Ki * integral + Kd * derivative; // manipulated variable MV(t)
+        previous_error = error;
         if (MV < 0){
             direction = 0;
         }
         else{
             direction = 1;
         }
-        // 1 full rotation is 2048 "steps". One step is 4 pulses to the motor. function uses "full step" mode
-        // steps is calculated using angle. 2048 steps = 360 degrees.
-        // for 1 degree resolution. we step 2048/360 = 5.689 ~= 5
-    //        steps = 2048/360*deltaAngle;
 
         motor_speed = abs(min_period * 180 / MV);
         if (motor_speed < min_period){
             motor_speed = min_period;
         }
-        else if (motor_speed > 30000){
+        else if (motor_speed > 30000 || motor_speed < -30000){
             motor_speed = 0;
         }
         else if (motor_speed > max_period){
@@ -162,6 +174,12 @@ void main(void) {
     //        steps = 2048;
 
         TACCR0 = motor_speed;
+//
+//        TB0CCTL5 ^= CCIS_1; // toggle CCIS0 bit to initiate software capture
+
+//        __bis_SR_register(LPM0_bits+GIE); // Enter LPM0
+
+
 //        TB0CCTL0 &= ~CCIE;
 //        __bis_SR_register(LPM0_bits); // Enter LPM0
     }
@@ -172,15 +190,31 @@ __interrupt void ADC12ISR(void) {
     ADC_x = ADC12MEM0;      // Move results, IFG is cleared
     ADC_y = ADC12MEM1;
     ADC_z = ADC12MEM2;
-    TB0CCTL0 = CCIE;
-//    __bic_SR_register_on_exit(LPM0_bits); // Exit LPM0
+    TB0CCTL5 ^= CCIS_1; // toggle CCIS0 bit to initiate software capture
+
+//    TB0CCTL0 = CCIE;
+//    __bic_SR_register_on_exit(LPM0_bits);  // Exit LPMx, interrupts enabled
 }
 
 #pragma vector = TIMERB0_VECTOR
 __interrupt void timerB_isr() {
-    TB0CCTL0 &= ~CCIE;
-    LPM0_EXIT;
+    static int i = 1;
+    current_t = i;
+    i++;
 }
+#pragma vector = TIMERB1_VECTOR
+__interrupt void timerB1_isr() {
+    millis = (float)TBCCR5/32767 - last_millis;
+    if(millis < 0) // crude method of handling when CCR5 rolls over and millis goes negative
+    {
+        millis = 0;
+    }
+    last_millis = (float)TBCCR5/32767;
+    TB0CCTL5 &= ~CCIFG;
+
+    __bic_SR_register_on_exit(LPM0_bits);  // Exit LPMx, interrupts enabled
+}
+
 #pragma vector = TIMERA0_VECTOR
 __interrupt void timerA_isr() {
     //PID control loop
@@ -195,5 +229,3 @@ __interrupt void timerA_isr() {
         }
     }
 }
-
-
