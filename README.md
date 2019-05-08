@@ -15,7 +15,7 @@ error = Set Point - Process Variable(t)
 ```
 
 Where the set point is the desired position and the process variable is the current position. 
-With this error, we can derive the Proportional, Integral, and Derivative terms. The proportional term is equal to the current error, the integral term accounts for past error, and the derivative term accounts for the current rate of change of the error. The combination of these inputs drive the PWM signal frequency that drives the motor. This combination, which is called the manipulated variable, can be represented in general terms by the equation:
+With this error, we can derive the Proportional, Integral, and Derivative terms. The proportional term is equal to the current error, the integral term accounts for past error, and the derivative term accounts for the current rate of change of the error. The combination of these inputs drive the PWM signal \****frequency*** that drives the motor. This combination, which is called the manipulated variable, can be represented in general terms by the equation:
 
 ```
 MV(t) = Kp*Proportional + Ki*Integral + Kd*Derivative
@@ -38,3 +38,4 @@ Breadboard
 
 Connect the GND and Vcc wires of the 5v power source to the negative and positive rails of the breadboard. Use a jumper cable to make the negative rail common ground with the MSP430. Connect jumper cables to the accelerometer’s GND, Vcc, X and Z pins. Connect the GND of the accelerometer to common ground on the breadboard and Vcc of the accelerometer to the Vcc of the MSP430. Connect X to P6.4 and Z to P6.6 of the MSP430. The ports are located on Header 8 as pin 5(P6.4) and pin 7(P6.6). Connect the stepper motor to the ULN2003 driver. Connect the Vcc of the ULN2003 to the 5v rail of the breadboard, and GND pin to ground on the breadboard. There are 4 input signal pins labeled IN1, IN2, IN3 and IN4. Connect IN1 to P2.0, IN2 to P2.3, IN3 to P2.6, and IN4 to P2.7. It is important to connect them in the proper sequence for the motor to work. These ports are connected to pins 1(P2.0), 4(P2.3), 7(P2.6) 8(P2.7) of Header 4 of the MSP430 Experimenter's Board. 
 
+###### \* This PID loop drives the frequency of the PWM signal to the motor, which controls the speed of the motor. The larger the error, the faster the motor spins. However, controlling the torque of the motor, with a constant speed, would be ideal. But I don't know how to do that.
